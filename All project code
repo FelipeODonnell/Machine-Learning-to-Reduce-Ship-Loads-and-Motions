@@ -1,0 +1,1252 @@
+#Full Code used for Project (Including testing code)
+
+Individual Project:
+
+
+Objective:
+
+Have a Pandas DataFrame with the timings, load readings, and slam identification (1 or 0) to run ML
+
+Step by Step:
+
+Looking at Slam Objective 2 data in particular, these are conditions (**85**)90-111
+First we will extract all pressure files into a series/array/dataframe
+Then we will find a algorithm to split the single string in each row to columns by separating through space in string
+Then we will create a pandas dataframe to ***
+Then we will create a new slam column to identify slam occurances
+We will then make a new variable with slam identifiers and the timings (ticker)
+With this we will combine each data set with the load readings and match the timings of each, to identify 
+(with a algotithm to matches slams with max load magnitudes) at each reading
+Then we will have a number of different data sets consisting of the timings, load readings and slam identification
+This data can then be used in our maching learing algorithm
+
+
+New notes:
+
+First do all calibration and zero settings
+Decimate carriage to 500Hz - delete 9/10 data sets - dont loose data however
+Identify trigger and match files  
+'''
+
+'''
+Notes about Data
+
+Real Value = (Measured - Zero) x Calibration     [including calibration with wave probe]
+
+*Deliberator is needed for both sets of data as it is in form of a single string per row
+
+Pressure
+-We need to identify the slams at each time from the pressure readings to label load readings
+Folder organised such that [Conditions(x,y...), Rail Test(?)] -- [Run] -- [Calibration, Zero, Moving]
+**some files have pressure readings disabled, e.g. R48
+*Files can be identified from calibration through term 'moving' or 'zero'
+Moving data files being on line 35, Zero files begin on line 29
+Columns in table in order of: [Forward LVDT, Aft LVDT, Capacitance moving wave probe in plane with CBT (WP1), Acoustic moving wave probe in plane with CBT (WP6) , Trigger (for synchronisation), Pressure sensor 1 (ID11255), Pressure sensor 2 (ID11232), Pressure sensor 3 (ID11302), Pressure sensor 4 (ID11258), Pressure sensor 5 (ID11257), Pressure sensor 6 (ID11253), Boat mounted wave probe (WP2) (furthest forward)]
+*From this to identify slam we want: column 5 (trigger - synchronisation), column 9 (looks as if best indicator of slams) ****which pressure reading is at the bow??
+**pressure graphs dont look anywhere like Ben's graph - potentially because of zero/calibration factor?
+**also ticker is not linear as doesnt seem sensible, is this a problem or just that ticker was not saved in a linear manner
+
+Load
+-We need to have real load readings of each run labeled with slams and each run combined in a DataFrame 
+**calibrations are all in one file and is unclear how to apply this to the data as each does not have a run
+All data in Load files have the real data starting on the 12th line of each file - need to only capture from 12th line
+Folder organised such that [conditions(x,y...), calibrations] -- [Run file moving, Run file zeros]
+**some of the load data has two files, e.g C90R75 0 AND 1 files, need to amalgamate these files
+**some data files are missing, e.g. run 73-77, all pressure values are zero -- need algorithm to exclude this
+Columns in table in order of: [N/A, Forward LVDT, Aft LVDT, Trigger (for synchronisation), [4-7] N/A, Strain gauge - Demihull port fwd, Strain gauge - Demihull port aft, Strain gauge - Demihull starboard fwd, Strain gauge - Demihull starboard aft, Strain gauge - Centre bow port fwd, Strain gauge - Centre bow port aft, Strain gauge - Centre bow starboard fwd, Strain gauge - Centre bow starboard aft]
+*From this the columns we want: column 3 (trigger - synchronisation), column 12, 13, 14, 15 (load readings for pressure sensors at bow)
+
+
+
+Meeting Notes
+
+Calibarate and zero all files
+decimate carriage data (pressure) to 500Hz, thus delete every 9th file
+Idenity trigger timing in both files
+Adjust Timing in CRIO to account for trigger
+Combine CRIO and Carriage files to get a single dataframe (*select data readings which are desired)
+Pick and identify slams from pressure trace
+In Load column identify next peak (Trough)
+This is slam magnitude and timing
+
+Then with dataframe of combined timings, slam identification and different data sets
+
+
+'''
+
+
+Looking at Slam Objective 2 data in particular, these are conditions (**85**)90-111
+First we will extract all pressure files into a series/array/dataframe
+Then we will find a algorithm to split the single string in each row to columns by separating through space in string
+Then we will create a pandas dataframe to ***
+Then we will create a new slam column to identify slam occurances
+We will then make a new variable with slam identifiers and the timings (ticker)
+With this we will combine each data set with the load readings and match the timings of each, to identify 
+(with a algotithm to matches slams with max load magnitudes) at each reading
+Then we will have a number of different data sets consisting of the timings, load readings and slam identification
+This data can then be used in our maching learing algorithm
+
+Meeting Notes
+
+Calibarate and zero all files
+decimate carriage data (pressure) to 500Hz, thus delete every 9th file
+Idenity trigger timing in both files
+Adjust Timing in CRIO to account for trigger
+Combine CRIO and Carriage files to get a single dataframe (*select data readings which are desired)
+Pick and identify slams from pressure trace
+In Load column identify next peak (Trough)
+This is slam magnitude and timing
+which are channels 1, 2, 4, 5, 9 for CARRIAGE and 3, 12 for cRIO
+
+Then with dataframe of combined timings, slam identification and different data sets
+
+steps:
+
+    1 import load run, load zero, pressure runs, pressure calibration into dataframes
+
+    2 make new dataframe with lines of interest
+
+    3 make new dataframe with line-split so there are different columns
+
+    4 make new dataframe with columns of interest
+
+    5 subtract zero from runs and multiply (pressure columns) by calibration
+
+    6 decimate CARRIAGE data to delete 9/10 values - make new dataframe to have every 9th
+
+    7 align dataframe with each other according to trigger
+
+    8 delete rows with N/A values (for both file sets)
+
+    9 combine pressure and load dataframes, to get relevant pressure sets and load data (single set)
+
+    10 *Apply Machine learning to dataframe
+    
+    #Load Data extraction and getting real values in DataFrame
+    
+   
+#START OF CODE (Includes testing files)
+
+import glob
+import pandas as pd
+import numpy as np
+from os import listdir
+import csv
+from collections import defaultdict
+import numpy as np
+import sklearn as sk
+import sklearn.datasets as skd
+import sklearn.ensemble as ske
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+#Import all load files
+
+load_path = '/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load' # use your path
+load_folder_files = glob.glob(load_path + "/*.csv")
+
+load_files = []
+
+for filename in load_folder_files:
+    df_l = pd.read_csv(filename, delimiter ='\t', engine = 'python', header=0, usecols = ['9215 A AI 3 ', '9237 B AI 0 '], skiprows=10, skip_blank_lines=True) 
+    load_files.append(df_l)
+    
+load = pd.concat(load_files, axis=1, ignore_index=True)
+
+print(load)
+
+
+load_labeled = pd.concat(load_files, axis=1, ignore_index=False)
+
+print(load_labeled)
+
+#Name Columns
+
+load.columns = ['Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load',]
+load_labeled.columns = ['Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load', 'Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load','Trigger', 'Load',]
+
+
+print(load, load_labeled)
+
+
+
+#import Pressure files
+
+pressure_path = '/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure' # use your path
+pressure_folder_files = glob.glob(pressure_path + "/*.csv")
+
+pressure_files = []
+
+for filename in pressure_folder_files:
+    df_p = pd.read_csv(filename, delimiter =' ', engine = 'python', header=1, usecols = ['VARIABLES="Time"', 'Ch1_Fwd_LVDT', 'Ch4_Acoustic_WP', 'Ch5_Trigger', 'Ch9_PS4_11258'], skiprows=25, skip_blank_lines=True) 
+    pressure_files.append(df_p)
+
+#Pressure with columns indexed by number
+
+pressure = pd.concat(pressure_files, axis=1, ignore_index=True)
+
+print(pressure)
+
+#Pressure with columns with real labels
+
+pressure_labeled = pd.concat(pressure_files, axis=1, ignore_index=False)
+
+print(pressure_labeled)
+
+#import Pressure files ####TEST
+
+pressure_path = '/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure' # use your path
+pressure_folder_files = glob.glob(pressure_path + "/*.csv")
+
+pressure_files = []
+
+for filename in pressure_folder_files:
+    df_p = pd.read_csv(filename, delim_whitespace=True, engine = 'python', header=1, skiprows=25, skip_blank_lines=True) 
+    pressure_files.append(df_p)
+
+#Pressure with columns indexed by number
+
+pressure = pd.concat(pressure_files, axis=1, ignore_index=True)
+
+print(pressure)
+
+#Pressure with columns with real labels
+
+pressure_labeled = pd.concat(pressure_files, axis=1, ignore_index=False)
+
+print(pressure_labeled)
+
+#PRESSURE EDIT CODE 
+
+
+#Pick out the numbers for runs
+
+pressure_numbers = pressure_labeled[6:].astype('float64')
+
+print(pressure_numbers)
+
+#Pick out the Calibration numbers
+
+Calibration = pressure.loc[2].astype('float64')     #.transpose()
+Zero = pressure.loc[1].astype('float64')      #.transpose()
+
+print(Calibration, Zero)
+
+#Calibrate, subtract and multi every column by corresponding value in 
+
+#real_pressure_run = pressure_numbers.subtract(Zero, axis=1).multiply(Calibration, axis=1)  #May need numpy to make work - matrix operation
+
+real_pressure_run = (np.array(pressure_numbers) - np.array(Zero)) * np.array(Calibration) 
+
+print(real_pressure_run)
+
+real_pressure_run = pd.DataFrame(real_pressure_run)
+
+print(real_pressure_run)
+
+
+
+#Decimate
+
+real_pressure_run = real_pressure_run[::10]
+
+print(real_pressure_run)
+
+#Label all columns
+
+real_pressure_run.columns = ['Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,'Time', 'FWD LVDT', 'Acoustic WP', 'Trigger', 'Pressure' ,]
+
+print(real_pressure_run)
+
+real_pressure_run = real_pressure_run.reset_index(drop=True)
+
+print(real_pressure_run)
+
+#Next make time the index and delete all other time columns
+
+#Trigger by deleting all points before condition of trigger above 1 is met
+
+#iterate over every column named 'trigger', test and see if trigger is above 1, the first cell this happens for,
+#delete all above data for each run which is the columns i-3, i-2, i-1, i, i+1
+
+print(real_pressure_run, load_labeled)
+
+#make copies
+
+pressure_copy = real_pressure_run.copy()
+load_copy = load_labeled.copy()
+
+pressure_copy = pd.DataFrame(pressure_copy)
+load_copy = pd.DataFrame(load_copy)
+
+#Trigger deletion condition
+
+#Trigger_condition = load_copy[ (load_copy['Trigger'] >= 1) ]
+
+#print(Trigger_condition)
+
+#delete all values in column i, i+1, i-1, i-2 above (real_pressure_run.iloc[:, 3::5])'tigger'>1.first [and iterate for every 5 columns]
+
+'''
+for key,value in load_copy.iteritems():
+    
+    print (key,value)
+
+for column in pressure_copy.columns[1::5]:
+    for column in pressure_copy.columns[2::5]:
+        for column in pressure_copy.columns[4::5]:
+            for column in pressure_copy.columns[3::5]:
+                delete values 
+    
+    delete all values above 
+    print(pressure_copy[column])
+
+    
+load_copy.drop(load_copy[load_copy['Trigger'] > 1].first.index, inplace = True) 
+
+newdfload = load_copy.iloc[:,0::2].first > 1:
+
+#now we have the starting index equal we want to align the datasets
+
+CARRIAGE_DATASET_join = CARRIAGE_DATASET.reset_index(drop=False).copy()
+cRIO_DATASET_join = cRIO_DATASET.reset_index(drop=False).copy()
+
+print(CARRIAGE_DATASET_join, cRIO_DATASET_join)
+
+print(CARRIAGE_DATASET_join.join(cRIO_DATASET_join, lsuffix='index'))
+
+DATASET_JOIN = CARRIAGE_DATASET_join.join(cRIO_DATASET_join, lsuffix='index')
+
+print(DATASET_JOIN)
+
+DATASET_JOIN = DATASET_JOIN[['FWD LVDT', 'Acoustic Wave Probe', 'Pressure', 'Load']]
+
+print(DATASET_JOIN)
+
+'''
+'''
+   load_result = load_result.drop()
+    for next(load_copy.iloc[:,0::2] > 1):
+        load_result = next(load_copy.iloc[:,0::2] > 1)
+'''
+    
+    
+    
+
+for i in range(0, len(pressure_copy.columns), 5):
+    
+    if (load_copy.loc[[0], [i+3]] < 1):
+        load_copy_new = load_copy.drop(load_copy.loc[[0],[i+1, i+2, i+3, i+4]], axis = 1)
+          
+    else:
+        break
+    
+print(load_copy_new)
+
+
+
+
+RAW_load_run_test = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/Condition 90/C90_R070_000_FPGA.csv', delimiter ='\t', engine = 'python', header=None, usecols = range(0,15), skiprows=10, skip_blank_lines=True)
+
+df_testing1 = pd.DataFrame(RAW_load_run_test)
+
+print(pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/Condition 90/C90_R070_000_FPGA.csv', skiprows=9), RAW_load_run_test, df_testing1)
+
+#Load Run 
+RAW_load_run = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/Condition 90/C90_R070_000_FPGA.csv', delimiter ='\t', engine = 'python', header=None, usecols = range(0,15), skiprows=10, skip_blank_lines=True)
+RAW_load_run_df = pd.DataFrame(RAW_load_run)
+
+#Load Zero - dont care
+#RAW_load_zero = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/Condition 90/C90_R070_zero_000_FPGA.csv', delimiter ='\t', engine = 'python', header=None, usecols = range(0,15), skiprows=10, skip_blank_lines=True)
+#RAW_load_zero_df = pd.DataFrame(RAW_load_zero)
+
+#Pressure Run
+RAW_pressure_run = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure/Condition 90/70.run/R70-02_moving.csv', delimiter =' ', engine = 'python', header=None, usecols = range(0,15), skiprows=32, skip_blank_lines=True)
+RAW_pressure_run_df = pd.DataFrame(RAW_pressure_run)
+
+#Pressure Calibration
+RAW_pressure_cali = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure/Condition 90/70.run/calibration.csv', delimiter =' ', engine = 'python', header=None, usecols = range(0,3), skiprows=3, skip_blank_lines=True)
+RAW_pressure_cali_df = pd.DataFrame(RAW_pressure_cali)
+
+print(RAW_load_run_df, RAW_load_zero_df, RAW_pressure_run_df, RAW_pressure_cali_df, RAW_pressure_cali_df[1:60], pd.DataFrame.describe(RAW_pressure_cali_df)) 
+
+
+#Select exact files and label columns
+
+#Select desired columns and rows
+
+Load_run_df = RAW_load_run_df.iloc[1:, [3, 12]].astype('float64')
+
+#name columns Trigger and Load Values - Trigger, Load
+
+Load_run_df.columns = ['Trigger', 'Load']
+
+print(Load_run_df, Load_run_df.dtypes)
+
+#plot trigger of load vs time, and load vs time
+
+print(Load_run_df)
+
+#create new load variable for the dataset and for graphing
+cRIO_DATASET = Load_run_df.copy()
+cRIO_DATASET_GRAPH = Load_run_df.copy().reset_index(drop=False)
+
+cRIO_DATASET
+cRIO_DATASET_GRAPH
+
+
+#Load Trigger Vs Index
+
+cRIO_DATASET_GRAPH.plot(kind='scatter',x='index',y='Trigger',color='red', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+#Load Data Vs Index
+
+cRIO_DATASET_GRAPH.plot(kind='scatter',x='index',y='Load',color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+#print(RAW_pressure_run_df, RAW_pressure_cali_df, RAW_pressure_cali_df[1:60])
+
+#From this we want columns 0, 2, 5, 6, 9, which are time, fWD LVDT, Acoustic wave probe, trigger, and pressure at hull
+
+pressure_run_data = RAW_pressure_run_df.iloc[2:, [2, 5, 6, 10]].astype('float64')
+pressure_run_data.columns = ['FWD LVDT', 'Acoustic Wave Probe', 'Trigger', 'Pressure']
+
+print(pressure_run_data)
+
+#Now we need to decimate this data and reset index
+
+pressure_run_500Hz = pressure_run_data[::10]
+
+pressure_run_500Hz = pressure_run_500Hz.reset_index(drop=True)
+
+print(pressure_run_500Hz, pressure_run_500Hz.dtypes)
+print(pressure_run_500Hz.reset_index(drop=False))
+
+Graph_Pressure_Run = pressure_run_500Hz.reset_index(drop=False)
+
+#Plot - FWD LVDT, Acoustic Wave Probe, Trigger, Pressure VS Index (ALL B. ZERO AND CAL)
+
+#FWD LVDT Plot
+Graph_Pressure_Run.plot(kind='scatter',x='index',y='FWD LVDT',color='red', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+#Acoustic Wave Probe Plot
+Graph_Pressure_Run.plot(kind='scatter',x='index',y='Acoustic Wave Probe', color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+#Trigger Plot
+Graph_Pressure_Run.plot(kind='scatter',x='index',y='Trigger', color='green', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+#Pressure Wave Probe Plot
+Graph_Pressure_Run.plot(kind='scatter',x='index',y='Pressure', color='black', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+print(RAW_pressure_cali_df[1:60], RAW_pressure_cali_df[0], RAW_pressure_cali_df[2])
+
+#Select Zero and Calibration Pressure Run Data
+
+#FWD LVDT
+FWD_LVDT_ZERO = RAW_pressure_cali_df.iloc[[8], [2]].astype('float64')
+FWD_LVDT_CALI = RAW_pressure_cali_df.iloc[[6], [2]].astype('float64')
+
+#WAVE PROBE
+WAVE_PROBE_ZERO = RAW_pressure_cali_df.iloc[[20], [2]].astype('float64')
+WAVE_PROBE_CALI = RAW_pressure_cali_df.iloc[[18], [2]].astype('float64')
+
+#PRESSURE
+PRESSURE_ZERO = RAW_pressure_cali_df.iloc[[40], [2]].astype('float64')
+PRESSURE_CALI = RAW_pressure_cali_df.iloc[[38], [2]].astype('float64')
+
+print(FWD_LVDT_ZERO, FWD_LVDT_CALI, WAVE_PROBE_ZERO, WAVE_PROBE_CALI, PRESSURE_ZERO, PRESSURE_CALI)
+print(PRESSURE_ZERO.dtypes, np.linalg.det(FWD_LVDT_ZERO))
+
+#Find the determinant of each, allows us to perform operation
+
+print(np.linalg.det(FWD_LVDT_CALI))
+
+CARRIAGE_DATASET = pressure_run_500Hz.copy()
+
+#a = ((pressure_run_500Hz['Pressure'] - np.linalg.det(PRESSURE_ZERO) * np.linalg.det(PRESSURE_CALI))
+#FWD LVDT
+CARRIAGE_DATASET['FWD LVDT'] = ((CARRIAGE_DATASET['FWD LVDT'] - np.linalg.det(FWD_LVDT_ZERO)) * np.linalg.det(FWD_LVDT_CALI))
+#can use mean potentially: CARRIAGE_DATASET['FWD LVDT'].mean()
+#WAVE PROBE
+CARRIAGE_DATASET['Acoustic Wave Probe'] = ((CARRIAGE_DATASET['Acoustic Wave Probe'] - np.linalg.det(WAVE_PROBE_ZERO)) * np.linalg.det(WAVE_PROBE_CALI))
+
+#PRESSURE
+CARRIAGE_DATASET['Pressure'] = ((CARRIAGE_DATASET['Pressure'] - np.linalg.det(PRESSURE_ZERO)) * np.linalg.det(PRESSURE_CALI))
+
+
+print(CARRIAGE_DATASET)
+
+
+#reindex and graph new correct dataset  
+
+CARRIAGE_DATASET_GRAPHING = CARRIAGE_DATASET.copy().reset_index(drop=False)
+CARRIAGE_DATASET_GRAPHING
+
+#Plot - FWD LVDT, Acoustic Wave Probe, Trigger, Pressure VS Index (ALL B. ZERO AND CAL)
+
+#FWD LVDT Plot
+CARRIAGE_DATASET_GRAPHING.plot(kind='scatter',x='index',y='FWD LVDT', color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.figure()
+
+
+#Make plot bigger
+#Have better scatter points - smaller points
+#Label X axis
+
+#Plot - FWD LVDT, Acoustic Wave Probe, Trigger, Pressure VS Index (ALL B. ZERO AND CAL)
+
+#FWD LVDT Plot
+CARRIAGE_DATASET_GRAPHING.plot(kind='scatter',x='index',y='Acoustic Wave Probe',color='green', figsize=(20, 6), s=2).set_xlabel('Data').set_ylim(-100,100)
+plt.show()
+
+
+#Plot - FWD LVDT, Acoustic Wave Probe, Trigger, Pressure VS Index (ALL B. ZERO AND CAL)
+
+#FWD LVDT Plot
+CARRIAGE_DATASET_GRAPHING.plot(kind='scatter',x='index',y='Trigger', color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+#Plot - FWD LVDT, Acoustic Wave Probe, Trigger, Pressure VS Index (ALL B. ZERO AND CAL)
+
+#FWD LVDT Plot
+CARRIAGE_DATASET_GRAPHING.plot(kind='scatter',x='index',y='Pressure',color='black', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+print(CARRIAGE_DATASET, cRIO_DATASET)
+
+print(CARRIAGE_DATASET, cRIO_DATASET)
+print(CARRIAGE_DATASET.dtypes, cRIO_DATASET.dtypes)
+
+
+#Find first value where trigger is above 2 for CARRIAGE
+for j in range(len(CARRIAGE_DATASET)):
+    if CARRIAGE_DATASET_TEST['Trigger'].iloc[j] > 2:
+        break
+        
+print(j)
+
+#Find first value where trigger is above 2 for cRIO
+for i in range(len(cRIO_DATASET)):
+    if cRIO_DATASET_TEST['Trigger'].iloc[i] > 2:
+        break
+        
+print(i)
+
+#Now we want to align the datasets from these rows, so match row 1486 CARRIAGE with 406 cRIO
+
+#1486 - 406 = 1086
+
+#we need to delete the first 1080 rows of CARRIAGE DATA, then we can join the datasets
+
+#print (CARRIAGE_DATASET_TEST)
+
+CARRIAGE_DATASET = CARRIAGE_DATASET[1080:]
+CARRIAGE_DATASET = CARRIAGE_DATASET.reset_index(drop=True)
+
+print(CARRIAGE_DATASET)
+
+#now we have the starting index equal we want to align the datasets
+
+CARRIAGE_DATASET_join = CARRIAGE_DATASET.reset_index(drop=False).copy()
+cRIO_DATASET_join = cRIO_DATASET.reset_index(drop=False).copy()
+
+print(CARRIAGE_DATASET_join, cRIO_DATASET_join)
+
+print(CARRIAGE_DATASET_join.join(cRIO_DATASET_join, lsuffix='index'))
+
+DATASET_JOIN = CARRIAGE_DATASET_join.join(cRIO_DATASET_join, lsuffix='index')
+
+print(DATASET_JOIN)
+
+DATASET_JOIN = DATASET_JOIN[['FWD LVDT', 'Acoustic Wave Probe', 'Pressure', 'Load']]
+
+print(DATASET_JOIN)
+
+
+#Now we have all the correct data together in a dataframe
+#Now we want to add a slam column to identify slams according to pressure
+
+#From the above graph we can see that when the pressure is |x|>|0.5|, we can define a slam
+DATASET_JOIN['Slam Identification'] = [1 if x >= 0.5 else 0 for x in DATASET_JOIN['Pressure']]
+
+print(DATASET_JOIN)
+
+DATASET_JOIN['Slam Identification'] = 0
+DATASET_JOIN.loc[DATASET_JOIN['Pressure'] > 0.5,'Slam Identification'] = 1
+DATASET_JOIN.loc[DATASET_JOIN['Pressure'] < -0.5,'Slam Identification'] = 1
+
+DATASET = DATASET_JOIN
+
+print(DATASET)
+
+#Define training set inputs and output, will be split 75/25
+
+training_inputs = DATASET[['FWD LVDT', 'Acoustic Wave Probe', 'Pressure', 'Load']]
+training_inputs = training_inputs[:15000]
+training_outputs = DATASET[['Slam Identification']]
+training_outputs = training_outputs[:15000]
+
+#Define test set and objective
+
+test_inputs = DATASET[['FWD LVDT', 'Acoustic Wave Probe', 'Pressure', 'Load']]
+test_inputs = test_inputs[15000:]
+test_outputs = DATASET[['Slam Identification']]
+test_outputs = test_outputs[15000:]
+
+print(training_inputs, training_outputs, test_inputs, test_outputs)
+
+#Create new variables to test with
+
+input_test = training_inputs.copy()
+output_test = training_outputs.copy()
+
+print(input_test, output_test)
+
+import os
+
+from typing import List, Any
+
+rootdir = '/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure/Condition 81/01.run/R01-02_moving.csv'
+runs = []
+
+
+class RunData:
+
+    calibration = []
+    data = []
+    name = ''
+    type = ''
+
+    def __init__(self, file):
+        self.name = file.name
+        lines = file.readlines()
+        if lines[0][0] == "#":
+            # It's the benApril one
+            self.type = "CARRIAGE"
+            for line in lines[28:30]:
+                self.calibration.append(line.split())
+            for line in lines[34:]:
+                self.data.append(line.split())
+        elif lines[0][0] == "[":
+            # It's the other one
+            self.type = "cRIO"
+            for line in lines[11:]:
+                self.data.append(line.split())
+
+
+for subdir, dirs, files in os.walk(rootdir):
+    for file in files:
+        with open(os.path.join(subdir, file)) as file:
+            runs.append(RunData(file))
+
+
+for run in runs:
+    print(run.name, run.type, "data length: ",len(run.data))
+    
+    
+[data[i][x] for i in range(len(data))]
+
+RAW_load_run_test = pd.DataFrame(RAW_load_run_test)
+
+load_test = RAW_load_run_test
+
+load_test = load_test[['9215 A AI 3 ', '9237 B AI 0 ']]
+
+print(load_test)
+
+load_test.columns = ['Trigger', 'Load']
+#print(load_test.loc[1])
+
+#RAW_load_run_test[0:20]
+print(RAW_load_run_test)
+
+#usecols = ['VARIABLES="Time"', 'Ch1_Fwd_LVDT', 'Ch4_Acoustic_WP', 'Ch5_Trigger', 'Ch9_PS4_11258'],
+#df_test = pd.DataFrame(RAW_pressure_run_test[6:])
+#df_test
+
+#test = pd.DataFrame(test)
+#Select desired columns and rows
+#test = test.iloc[:, [3, 12]].astype('float64')
+#name columns Trigger and Load Values - Trigger, Load
+#test.columns = ['Trigger', 'Load']
+#print(test, test.dtypes),     ['9215 A AI 3', '9237 B AI 0'], names = ['Trigger', 'Load']
+
+
+#RAW_load_run_test = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/C90_R070_000_FPGA.csv', delimiter ='\t', engine = 'python', header=None, usecols = ['3', '12'], names = ['Trigger', 'Load'], skiprows=10, skip_blank_lines=True)
+
+list(RAW_load_run_test.columns.values)
+
+RAW_pressure_run_test = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure/R70-02_moving.csv', delimiter =' ', engine = 'python', header=1, usecols = ['VARIABLES="Time"', 'Ch1_Fwd_LVDT', 'Ch4_Acoustic_WP', 'Ch5_Trigger', 'Ch9_PS4_11258'], skiprows=25, skip_blank_lines=True)
+
+RAW_pressure_run_test[0:20]
+print(RAW_pressure_run_test)
+
+
+df_test = pd.DataFrame(RAW_pressure_run_test[6:]).astype='float64'
+df_test
+
+
+#PRESSURE EDIT CODE 
+
+
+
+#Pick out the numbers for runs
+
+pressure_numbers = pressure_labeled[5:]
+
+print(pressure_numbers)
+
+#Pick out the Calibration numbers
+
+Calibration = load_test.loc[2].transpose()
+Zero = load_test.loc[1].transpose()
+
+print(Calibration, Zero)
+
+#Calibrate, subtract and multi every column by corresponding value in 
+
+real_pressure_run = pressure_numbers.subtract(Zero, axis=1).multiply(Calibration, axis=1)  #May need numpy to make work - matrix operation
+
+'''
+Method used previously - but now not single value, is matrix
+#a = ((pressure_run_500Hz['Pressure'] - np.linalg.det(PRESSURE_ZERO) * np.linalg.det(PRESSURE_CALI))
+#FWD LVDT
+CARRIAGE_DATASET['FWD LVDT'] = ((CARRIAGE_DATASET['FWD LVDT'] - np.linalg.det(FWD_LVDT_ZERO)) * np.linalg.det(FWD_LVDT_CALI))
+#can use mean potentially: CARRIAGE_DATASET['FWD LVDT'].mean()
+#WAVE PROBE
+CARRIAGE_DATASET['Acoustic Wave Probe'] = ((CARRIAGE_DATASET['Acoustic Wave Probe'] - np.linalg.det(WAVE_PROBE_ZERO)) * np.linalg.det(WAVE_PROBE_CALI))
+
+#PRESSURE
+CARRIAGE_DATASET['Pressure'] = ((CARRIAGE_DATASET['Pressure'] - np.linalg.det(PRESSURE_ZERO)) * np.linalg.det(PRESSURE_CALI))
+'''
+
+print(real_pressure_run)
+
+#Decimate
+
+real_pressure_run = pressure_numbers[::10]
+
+print(real_pressure_run)
+
+#Trigger by deleting all points before condition of trigger above 1 is met
+
+iterate over every column named 'trigger', test and see if trigger is above 1, the first cell this happens for,
+delete all above data for each run which is the columns i-3, i-2, i-1, i, i+1
+
+#Load Run 
+RAW_load_run = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/C90_R070_000_FPGA.csv')
+RAW_load_run_df = pd.DataFrame(RAW_load_run)
+
+
+#Pressure Run
+RAW_pressure_run = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure/R70-02_moving.csv')
+RAW_pressure_run_df = pd.DataFrame(RAW_pressure_run)
+
+
+print(RAW_load_run_df[:30], RAW_pressure_run_df[:40]) 
+
+#Load Run 
+RAW_load_run = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/C90_R070_000_FPGA.csv', delimiter ='\t', engine = 'python', header=None, usecols = range(0,15), skiprows=10, skip_blank_lines=True)
+RAW_load_run_df = pd.DataFrame(RAW_load_run)
+
+
+#Pressure Run
+RAW_pressure_run = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure/R70-02_moving.csv', delimiter =' ', engine = 'python', header=None, usecols = range(0,15), skiprows=32, skip_blank_lines=True)
+RAW_pressure_run_df = pd.DataFrame(RAW_pressure_run)
+
+
+print(RAW_load_run_df, RAW_pressure_run_df) 
+
+to do
+#3 split lines to columns in dataframe
+#5 subtract zeros from runs and multiply
+#6.5 create slam identification column
+#7 align triggers
+#Machine learning techniques
+
+
+
+#https://www.kaggle.com/kanncaa1/machine-learning-tutorial-for-beginners
+#Datasets to use, want at least 200,000 data sets
+
+C90 R70
+C91 R86
+R86-93
+R114-120
+C97
+C100
+C103
+C106
+
+7 IN EACH CONDITION, 6X7+2=44X15000= V GOOD AMOUNT OF DATA, going to have to do it a lot of times, or justa few and manipulate results sl
+
+Looking at Slam Objective 2 data in particular, these are conditions (**85**)90-111
+First we will extract all pressure files into a series/array/dataframe
+Then we will find a algorithm to split the single string in each row to columns by separating through space in string
+Then we will create a pandas dataframe to ***
+Then we will create a new slam column to identify slam occurances
+We will then make a new variable with slam identifiers and the timings (ticker)
+With this we will combine each data set with the load readings and match the timings of each, to identify 
+(with a algotithm to matches slams with max load magnitudes) at each reading
+Then we will have a number of different data sets consisting of the timings, load readings and slam identification
+This data can then be used in our maching learing algorithm
+
+Meeting Notes
+
+Calibarate and zero all files
+decimate carriage data (pressure) to 500Hz, thus delete every 9th file
+Idenity trigger timing in both files
+Adjust Timing in CRIO to account for trigger
+Combine CRIO and Carriage files to get a single dataframe (*select data readings which are desired)
+Pick and identify slams from pressure trace
+In Load column identify next peak (Trough)
+This is slam magnitude and timing
+which are channels 1, 2, 4, 5, 9 for CARRIAGE and 3, 12 for cRIO
+
+Then with dataframe of combined timings, slam identification and different data sets
+
+steps:
+
+    1 import load run, load zero, pressure runs, pressure calibration into dataframes
+
+    2 make new dataframe with lines of interest
+
+    3 make new dataframe with line-split so there are different columns
+
+    4 make new dataframe with columns of interest
+
+    5 subtract zero from runs and multiply (pressure columns) by calibration
+
+    6 decimate CARRIAGE data to delete 9/10 values - make new dataframe to have every 9th
+
+    7 align dataframe with each other according to trigger
+
+    8 delete rows with N/A values (for both file sets)
+
+    9 combine pressure and load dataframes, to get relevant pressure sets and load data (single set)
+
+    10 *Apply Machine learning to dataframe
+
+#1 import load run, load zero, pressure runs, pressure calibration, for general case need a delimiter of '\t' and space
+ 
+#case with C90 R70
+
+import glob
+import pandas as pd
+from os import listdir
+
+#Load Run 
+RAW_load_run = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/Condition 90/C90_R070_000_FPGA.csv')
+
+#Load Zero
+RAW_load_zero = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load/Condition 90/C90_R070_zero_000_FPGA.csv')
+
+#Pressure Run
+RAW_pressure_run = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure/Condition 90/70.run/R70-02_moving.csv')
+
+#Pressure Calibration
+RAW_pressure_cali = pd.read_csv('/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure/Condition 90/70.run/calibration.csv')
+
+print(RAW_load_run[9:], RAW_load_zero[9:], RAW_pressure_run[29:], RAW_pressure_cali) #First row of desired data
+
+
+print(RAW_load_run.columns, RAW_load_zero.columns, RAW_pressure_run.columns, RAW_pressure_cali.columns)
+
+#2 Make new dataframe with rows of interest
+
+#Load Run 
+RAW_load_run_df = pd.DataFrame(RAW_load_run[9:])        
+
+#Load Zero
+RAW_load_zero_df = pd.DataFrame(RAW_load_zero[9:])  
+
+#Pressure Run
+RAW_pressure_run_df = pd.DataFrame(RAW_pressure_run[29:]) 
+
+#Slope and zero, in order, for channels of interest, 1, 2, 4, 5, 9
+
+#Pressure Calibration
+RAW_pressure_cali_df = pd.DataFrame(RAW_pressure_cali.iloc[[10, 22, 26, 42],]) 
+
+#Pressure Zero
+RAW_pressure_zero_df = pd.DataFrame(RAW_pressure_cali.iloc[[8, 20, 24, 40],])
+
+#Reset each datasets index to 0
+RAW_load_run_df = RAW_load_run_df.reset_index(drop=True)
+RAW_load_zero_df = RAW_load_zero_df.reset_index(drop=True)
+RAW_pressure_run_df = RAW_pressure_run_df.reset_index(drop=True)
+RAW_pressure_cali_df = RAW_pressure_cali_df.reset_index(drop=True)
+RAW_pressure_zero_df = RAW_pressure_zero_df.reset_index(drop=True)
+
+print(RAW_load_run_df, RAW_load_zero_df, RAW_pressure_run_df, RAW_pressure_cali_df, RAW_pressure_zero_df) #First row of desired data
+
+#3 make new dataframe with line-split so there are different columns (use delimiter of ' ' and '/t')
+
+#Load Run 
+RAW_load_run_df_ls = line.split(RAW_load_run_df)        
+
+#Load Zero
+RAW_load_zero_df_ls = line.split(RAW_load_zero_df)  
+
+#Pressure Run
+RAW_pressure_run_df_ls = line.split(RAW_pressure_run_df) 
+
+#Pressure Calibration
+RAW_pressure_cali_df_ls = line.split(RAW_pressure_cali_df) 
+
+#Pressure Zero
+RAW_pressure_zero_df_ls = line.split(RAW_pressure_zero_df) 
+
+#At this point we have all columns of the Load Run, Load Zero, Pressure Run sets, and rows of zero cand calibration for pressure
+
+#4 make new dataframe with columns of interest, and delete any empty rows
+
+#Load Run, we want columns 3 and 12 (Trigger and Strain Gauge)
+load_run = RAW_load_run_df_ls[:, [3, 12]]         
+
+#Load Zero
+load_zero = RAW_load_zero_df_ls[:, [12]]  
+
+#Pressure Run, we want columns 1, 4, 5, 9 (Forward LVDT, Acountic Moving Wave Probe, Trigger, Pressure Sensor 4)
+pressure_run = RAW_pressure_run_df_ls[:, [1, 4, 5, 9]] 
+
+#Pressure Calibration
+pressure_calibration = RAW_pressure_cali_df_ls[:, [2]] 
+
+#Pressure Zero
+pressure_zero = RAW_pressure_cali_df_ls[:, [2]] 
+
+##delete any blank rows 
+
+nan_value = float("NaN")
+load_run.replace("", nan_value, inplace=True)
+load_run.dropna(subset = ["column1"], inplace=True)
+load_zero.replace("", nan_value, inplace=True)
+load_zero.dropna(subset = ["column1"], inplace=True)
+pressure_run.replace("", nan_value, inplace=True)
+pressure_run.dropna(subset = ["column1"], inplace=True)
+
+#5 subtract zero from runs and multiply (pressure columns) by calibration
+
+load_values_500Hz = load_run
+load_values_500Hz[:, [1]] = load_run[:, [1]] - np.avg(load_zero[:, [0]])
+
+load_values_500Hz = load_run - np.avg(load_zero) #need to ensure average of each run is taken and subtracted from correlating run in run
+pressure_values_5000Hz = (pressure_run - np.avg(pressure_zero) * pressure_calibration #ensure correct calibration value for run
+
+#6 decimate CARRIAGE data to delete 9/10 values - make new dataframe to have every 10th value
+
+pressure_values_500Hz = pressure_values_5000Hz[::10] #selects every 10 rows
+
+print(RAW_pressure_cali_df[1:60], RAW_pressure_cali_df[0], RAW_pressure_cali_df[2])
+
+#Select Zero and Calibration Pressure Run Data
+
+#FWD LVDT
+FWD_LVDT_ZERO = RAW_pressure_cali_df.iloc[[8], [2]].astype('float64')
+FWD_LVDT_CALI = RAW_pressure_cali_df.iloc[[6], [2]].astype('float64')
+
+#WAVE PROBE
+WAVE_PROBE_ZERO = RAW_pressure_cali_df.iloc[[20], [2]].astype('float64')
+WAVE_PROBE_CALI = RAW_pressure_cali_df.iloc[[18], [2]].astype('float64')
+
+#PRESSURE
+PRESSURE_ZERO = RAW_pressure_cali_df.iloc[[40], [2]].astype('float64')
+PRESSURE_CALI = RAW_pressure_cali_df.iloc[[38], [2]].astype('float64')
+
+print(FWD_LVDT_ZERO, FWD_LVDT_CALI, WAVE_PROBE_ZERO, WAVE_PROBE_CALI, PRESSURE_ZERO, PRESSURE_CALI)
+print(PRESSURE_ZERO.dtypes, np.linalg.det(FWD_LVDT_ZERO))
+
+#Find the determinant of each, allows us to perform operation
+
+print(np.linalg.det(FWD_LVDT_CALI))
+
+CARRIAGE_DATASET = pressure_run_500Hz.copy()
+
+#a = ((pressure_run_500Hz['Pressure'] - np.linalg.det(PRESSURE_ZERO) * np.linalg.det(PRESSURE_CALI))
+#FWD LVDT
+CARRIAGE_DATASET['FWD LVDT'] = ((CARRIAGE_DATASET['FWD LVDT'] - np.linalg.det(FWD_LVDT_ZERO)) * np.linalg.det(FWD_LVDT_CALI))
+#can use mean potentially: CARRIAGE_DATASET['FWD LVDT'].mean()
+#WAVE PROBE
+CARRIAGE_DATASET['Acoustic Wave Probe'] = ((CARRIAGE_DATASET['Acoustic Wave Probe'] - np.linalg.det(WAVE_PROBE_ZERO)) * np.linalg.det(WAVE_PROBE_CALI))
+
+#PRESSURE
+CARRIAGE_DATASET['Pressure'] = ((CARRIAGE_DATASET['Pressure'] - np.linalg.det(PRESSURE_ZERO)) * np.linalg.det(PRESSURE_CALI))
+
+
+print(CARRIAGE_DATASET)
+
+#reindex and graph new correct dataset  
+
+CARRIAGE_DATASET_GRAPHING = CARRIAGE_DATASET.copy().reset_index(drop=False)
+CARRIAGE_DATASET_GRAPHING
+
+#Plot - FWD LVDT, Acoustic Wave Probe, Trigger, Pressure VS Index (ALL B. ZERO AND CAL)
+
+#FWD LVDT Plot
+CARRIAGE_DATASET_GRAPHING.plot(kind='scatter',x='index',y='FWD LVDT', color='blue', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.figure()
+
+#Plot - FWD LVDT, Acoustic Wave Probe, Trigger, Pressure VS Index (ALL B. ZERO AND CAL)
+
+#FWD LVDT Plot
+CARRIAGE_DATASET_GRAPHING.plot(kind='scatter',x='index',y='Acoustic Wave Probe',color='green', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+print(CARRIAGE_DATASET, cRIO_DATASET)
+
+print(CARRIAGE_DATASET.dtypes, cRIO_DATASET.dtypes)
+
+#Find first value where trigger is above 2 for CARRIAGE
+
+for j in range(len(CARRIAGE_DATASET)):
+    if CARRIAGE_DATASET_TEST['Trigger'].iloc[j] > 2:
+        break
+        
+print(j)
+
+#Find first value where trigger is above 2 for cRIO
+
+for i in range(len(cRIO_DATASET)):
+    if cRIO_DATASET_TEST['Trigger'].iloc[i] > 2:
+        break
+        
+print(i)
+
+#now we have the starting index equal we want to align the datasets
+
+CARRIAGE_DATASET_join = CARRIAGE_DATASET.reset_index(drop=False).copy()
+cRIO_DATASET_join = cRIO_DATASET.reset_index(drop=False).copy()
+
+print(CARRIAGE_DATASET_join, cRIO_DATASET_join)
+
+print(CARRIAGE_DATASET_join.join(cRIO_DATASET_join, lsuffix='index'))
+
+DATASET_JOIN = CARRIAGE_DATASET_join.join(cRIO_DATASET_join, lsuffix='index')
+
+print(DATASET_JOIN)
+
+DATASET_JOIN = DATASET_JOIN[['FWD LVDT', 'Acoustic Wave Probe', 'Pressure', 'Load']]
+
+print(DATASET_JOIN)
+
+#Create slam identification column
+
+DATASET_JOIN['Slam Identification'] = 0
+DATASET_JOIN.loc[DATASET_JOIN['Pressure'] > 0.5,'Slam Identification'] = 1
+DATASET_JOIN.loc[DATASET_JOIN['Pressure'] < -0.5,'Slam Identification'] = 1
+
+DATASET = DATASET_JOIN
+
+print(DATASET)
+
+Slam_Indentification_plot = DATASET.copy()
+
+Slam_Indentification_plot = pd.DataFrame(Slam_Indentification_plot)
+                                    
+Slam_Indentification_plot = Slam_Indentification_plot.reset_index(drop=False)                                    
+                                    
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Slam Identification',color='black', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+Slam_Indentification_plot['Slam Index'] = 0
+DATASET_JOIN.loc[for i:i+10 in range DATASET_JOIN['Slam Identification'] > 0,'Slam Index'] = 1
+
+print(Slam_Indentification_plot)
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Slam Index',color='red', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+#Add column for Slam index, which is the average of the next 10 data points
+
+Slam_Indentification_plot['Slam Index'] = Slam_Indentification_plot['Slam Identification'].rolling(window=10).mean()
+
+print(Slam_Indentification_plot)
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Slam Index',color='red', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+#Identify new row which is the difference between every 10 values 
+
+Slam_Indentification_plot['Diff Acoustic Wave Probe'] = Slam_Indentification_plot['Acoustic Wave Probe'].diff(periods=10)
+
+print(Slam_Indentification_plot[1:20])
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Diff Acoustic Wave Probe',color='purple', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+#Identify new row which is the difference between every 10 values
+
+Slam_Indentification_plot['Diff Pressure'] = Slam_Indentification_plot['Pressure'].diff(periods=10)
+
+print(Slam_Indentification_plot[1:20])
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Diff Pressure',color='green', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+#Identify new row which is the difference between every 10 values
+
+Slam_Indentification_plot['Diff Load'] = Slam_Indentification_plot['Load'].diff(periods=10)
+
+print(Slam_Indentification_plot[1:20])
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Diff Load',color='red', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+
+#Identify new row which is the difference between every 10 values
+
+Slam_Indentification_plot['Diff FWD LVDT'] = Slam_Indentification_plot['FWD LVDT'].diff(periods=10)
+
+print(Slam_Indentification_plot[1:20])
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Diff FWD LVDT',color='red', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+#Slam_Indentification_plot['Classification Prediction'] = Slam_Indentification_plot['Slam Identification'].rolling(window=10).sum()
+Slam_Indentification_plot['Classification Prediction'] = (Slam_Indentification_plot['Slam Identification'].iloc[::-1]
+        .rolling(10)
+        .sum()
+        .iloc[::-1])
+
+Slam_Indentification_plot.loc[Slam_Indentification_plot['Classification Prediction'] > 0,'Classification Prediction'] = 1
+
+#Slam_Indentification_plot['Slam Index'] = Slam_Indentification_plot['Slam Identification'].rolling(window=10).mean()
+#Slam_Indentification_plot.loc[DATASET_JOIN['Pressure'].sum() > 0,'Slam Identification'] = 1
+#Slam_Indentification_plot['Classification Prediction'] = Slam_Indentification_plot['Slam Identification'].apply(lambda x: 1 if  else 0)
+
+#for i in range len(Slam_Indentification_plot['Classification Prediction']):
+    #if sum()
+    
+print(Slam_Indentification_plot[1:20])
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Classification Prediction',color='red', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+
+#Identify new row which is the difference between every 10 values
+
+Slam_Indentification_plot['Var Load'] = Slam_Indentification_plot['Load'].rolling(window=10).var()
+
+print(Slam_Indentification_plot[1:20])
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Var Load',color='red', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+#Identify new row which is the difference between every 10 values
+
+Slam_Indentification_plot['Var Pressure'] = Slam_Indentification_plot['Pressure'].rolling(window=10).var()
+
+print(Slam_Indentification_plot[1:20])
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Var Pressure',color='red', figsize=(20, 6), s=2).set_xlabel('Sample (500Hz)')
+plt.show()
+
+#Add a time column for convenience
+
+Slam_Indentification_plot = Slam_Indentification_plot.dropna().reset_index()
+
+
+
+Slam_Indentification_plot['Time'] = Slam_Indentification_plot['index'].divide(500)
+
+print(Slam_Indentification_plot[1:20])
+
+
+Slam_Indentification_plot.plot(kind='scatter',x='index',y='Var Pressure',color='red', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.show()
+
+input__data = Slam_Indentification_plot[['FWD LVDT', 'Acoustic Wave Probe', 'Pressure', 'Load', 'Diff FWD LVDT', 'Diff Acoustic Wave Probe', 'Diff Pressure', 'Diff Load', 'Var Load']]
+
+print(input__data)
+
+input__data = input__data.dropna().reset_index(drop=True)
+
+print(input__data)
+
+
+input__data_training = input__data[:15000]
+
+print(input__data_training)
+
+input__data_testing = input__data[15000:]
+
+print(input__data_testing)
+
+output__data = Slam_Indentification_plot[['Classification Prediction']]
+
+print(output__data)
+
+output__data = output__data.dropna().reset_index(drop=True)
+
+output__data = output__data[:18933]
+
+print(output__data)
+
+#MACHINE LEARNING 
+
+
+
+from sklearn.neural_network import MLPClassifier
+
+for file in (filename) in dir(/Users/felipeodonnell/Desktop/Project/Data/cRIO data-Load):
+
+        if file(:30) contains any columns = 0 for all values
+            return()
+
+        else if file contains ( * csv) and ('Zero'):
+            L_DataFrame = File.append(line(:23))
+            L_Zero_Dataframe = Avg(Run in DataFrame)
+
+        else if file = /= ('Cali'):
+            L_RunFrame = File.append(filenames(:13))
+
+        else if file contains ('Cali'):
+            L_Cali = File.append(filenames(:7))
+
+        else return ()
+
+#Pressure  Data extraction and getting real values in DataFrame
+/Users/felipeodonnell/Desktop/Project/Data
+
+for file in (filename) in dir(/Users/felipeodonnell/Desktop/Project/Data/Ben_AprilIrregular_10-Pressure):
+
+        if file(:30) contains any columns = 0 for all values
+            return()
+
+        else if file contains ( * csv) and ('Zero'):
+            P_DataFrame = File.append(line(:23))
+            P_Zero_Dataframe = Avg(Run in DataFrame)
+
+        else if file = /= ('Cali'):
+            P_RunFrame = File.append(filenames(:13))
+
+        else if file contains ('Cali'):
+            P_Cali = File.append(filenames(:7))
+
+        else return ()
+
+
+
+P_Real_Run_DataFrame = (P_RunFrame - P_Zero_Dataframe) * P_Cali
+
+L_Real_Run_DataFrame = (L_RunFrame - L_Zero_Dataframe) * L_Cali
+
+#Now choose columns which we want to perform analysis on
+
+Pressure_Data = P_Real_Run_DataFrame(1,3,7,8:)
+Load_Data = P_Real_Run_DataFrame(1-5, 7, 8:)
