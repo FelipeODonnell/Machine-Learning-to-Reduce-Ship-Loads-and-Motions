@@ -1250,3 +1250,387 @@ L_Real_Run_DataFrame = (L_RunFrame - L_Zero_Dataframe) * L_Cali
 
 Pressure_Data = P_Real_Run_DataFrame(1,3,7,8:)
 Load_Data = P_Real_Run_DataFrame(1-5, 7, 8:)
+
+
+
+####IMPLIMENTATION OF MACHINE LEARNING ALGORITHMS
+
+###DECISION TREE
+import sklearn
+from sklearn.tree import DecisionTreeClassifier
+from sklearn import datasets
+from IPython.display import Image  
+
+X_train = training_data.drop('Classification Prediction', axis = 1)
+X_test = test_data.drop('Classification Prediction', axis = 1)
+y_train = training_data['Classification Prediction']
+y_test = test_data['Classification Prediction']
+
+#c = tree.DecisionTreeRegressor(max_depth = 25, 
+                             #random_state = 1)
+c = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+c.fit(X_train, y_train)
+accu_train = np.sum(c.predict(X_train) == y_train) / float(y_train.size)
+accu_test = np.sum(c.predict(X_test) == y_test) / float(y_test.size)
+
+print(accu_train)
+print(accu_test)
+
+
+
+#Random Forest
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix
+
+rf_model = RandomForestClassifier()
+rf_model.fit(X_train, y_train)
+
+rf_test_predictions = rf_model.predict(X_test)
+
+species = np.array(y_test)
+predictions = np.array(rf_test_predictions)
+
+confusion_matrix(species, predictions)
+
+RF_Matrix = confusion_matrix(species, predictions)
+
+print(RF_Matrix)
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'relu', solver='sgd', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'identity', solver='sgd', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'tanh', solver='sgd', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='lbfgs', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (40, 80, 40), random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (40, 40, 80, 40, 40), 
+                   random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20, 20, 40, 20, 20, 10), 
+                   random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (50, 100, 50), random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'tanh', solver='sgd', hidden_layer_sizes = (80, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-6, activation = 'tanh', solver='sgd', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-6, activation = 'tanh', solver='sgd', hidden_layer_sizes = (40, 80, 40), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'tanh', solver='sgd', hidden_layer_sizes = (20, 20, 20, 20, 20, 20, 20), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print(count, len(prediction))
+
+print(count/len(prediction))
+
+###VISUALISATION OF ML MODELS
+
+#decison tree
+
+
+#tree.plot_tree(c)
+
+plt.figure(figsize=(30,20))
+a = tree.plot_tree(c, 
+              filled=True, 
+              rounded=True, 
+              fontsize=10)
+              
+              
+#Random Forest
+
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+df_cm = pd.DataFrame(RF_Matrix.astype('int64'), columns=np.unique(species), index = np.unique(species))
+df_cm.index.name = 'Actual Slam Events'
+df_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(df_cm, cmap="Greens", annot=True,annot_kws={"size": 16}, fmt='g')# font size
+
+#plot_confusion_matrix(cf_matrix_3x3, figsize=(8,6), cbar=False)
+#sns.heatmap(RF_Matrix, cmap='Blues')
+'''
+labels = ['True Neg','False Pos','False Neg','True Pos']
+categories = ['Zero', 'One']
+make_confusion_matrix(RF_Matrix, 
+                      group_names=labels,
+                      categories=categories, 
+                      cmap='Blues', 
+                      figsize=(8,6))
+
+'''
+'''
+group_names = ['True Neg','False Pos','False Neg','True Pos']
+group_counts = [“{0:0.0f}”.format(value) for value in
+                RF_Matrix.flatten()]
+group_percentages = ['{0:.2%}'.format(value) for value in
+                     RF_Matrix.flatten()/np.sum(RF_Matrix)]
+labels = [f”{v1}\n{v2}\n{v3}” for v1, v2, v3 in
+          zip(group_names,group_counts,group_percentages)]
+labels = np.asarray(labels).reshape(2,2)
+sns.heatmap(RF_Matrix, annot=labels, fmt='', cmap='Blues')
+
+labels = ['True Neg','False Pos','False Neg','True Pos']
+labels = np.asarray(labels).reshape(2,2)
+sns.heatmap(RF_Matrix/np.sum(RF_Matrix), annot=labels, cmap='Blues')
+'''
+
+##NEURAL NET
+
+snp.prettyplot(matplotlib)
+fig, ax = snp.newfig()
+ax.plot(NN.loss_curve_)
+snp.labs("number of steps", "loss function", "Loss During GD (Rate=0.001)")
