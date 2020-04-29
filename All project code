@@ -1634,3 +1634,162 @@ snp.prettyplot(matplotlib)
 fig, ax = snp.newfig()
 ax.plot(NN.loss_curve_)
 snp.labs("number of steps", "loss function", "Loss During GD (Rate=0.001)")
+
+
+##confusion matrix's
+
+dt_test_predictions = c.predict(X_test)
+
+species = np.array(y_test.round())
+predictions = np.array(dt_test_predictions.round())
+
+DT_Matrix = confusion_matrix(species, predictions)
+
+print(DT_Matrix)
+
+#DT Numbers CM
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+DT_cm = pd.DataFrame(DT_Matrix.astype('int64'), columns=np.unique(species), index = np.unique(predictions))
+DT_cm.index.name = 'Actual Slam Events'
+DT_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(DT_cm, cmap="Greens", annot=True,annot_kws={"size": 16}, fmt='g')# font size
+
+#DT PROB CM - CHANGE DECIMAL
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+DT_cm = pd.DataFrame(DT_Matrix.astype('int64'), columns=np.unique(species), index = np.unique(predictions))
+DT_cm.index.name = 'Actual Slam Events'
+DT_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(DT_cm/np.sum(DT_cm), cmap="Blues", annot=True,annot_kws={"size": 16}, fmt='.2g')# font size
+
+
+import seaborn as sns
+from sklearn.metrics import plot_confusion_matrix
+from sklearn.metrics import confusion_matrix
+import pandas as pd
+import seaborn as sn
+import matplotlib.pyplot as plt
+%matplotlib inline
+import numpy as np
+
+#Random Forest CM
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+df_cm = pd.DataFrame(RF_Matrix.astype('int64'), columns=np.unique(species), index = np.unique(species))
+df_cm.index.name = 'Actual Slam Events'
+df_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(df_cm, cmap="Greens", annot=True,annot_kws={"size": 16}, fmt='g')# font size
+
+#plot_confusion_matrix(cf_matrix_3x3, figsize=(8,6), cbar=False)
+#sns.heatmap(RF_Matrix, cmap='Blues')
+'''
+labels = ['True Neg','False Pos','False Neg','True Pos']
+categories = ['Zero', 'One']
+
+
+##NEURAL NETWORK CM
+
+NN_species = np.array(y_test)
+NN_predictions = np.array(prediction)
+
+
+NN_CMatrix = confusion_matrix(NN_species, NN_predictions)
+
+print(NN_CMatrix)
+
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+NN_cm = pd.DataFrame(NN_CMatrix.astype('int64'), columns=np.unique(NN_species), index = np.unique(NN_predictions))
+NN_cm.index.name = 'Actual Slam Events'
+NN_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(NN_cm, cmap="Greens", annot=True,annot_kws={"size": 16}, fmt='g')# font size
+
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+NN_cm = pd.DataFrame(NN_CMatrix.astype('int64'), columns=np.unique(NN_species), index = np.unique(NN_predictions))
+NN_cm.index.name = 'Actual Slam Events'
+NN_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(NN_cm/np.sum(NN_cm), cmap="Blues", annot=True,annot_kws={"size": 16}, fmt='.2g')# font size
+make_confusion_matrix(RF_Matrix, 
+                      group_names=labels,
+                      categories=categories, 
+                      cmap='Blues', 
+                      figsize=(8,6))
+
+'''
+'''
+group_names = ['True Neg','False Pos','False Neg','True Pos']
+group_counts = [“{0:0.0f}”.format(value) for value in
+                RF_Matrix.flatten()]
+group_percentages = ['{0:.2%}'.format(value) for value in
+                     RF_Matrix.flatten()/np.sum(RF_Matrix)]
+labels = [f”{v1}\n{v2}\n{v3}” for v1, v2, v3 in
+          zip(group_names,group_counts,group_percentages)]
+labels = np.asarray(labels).reshape(2,2)
+sns.heatmap(RF_Matrix, annot=labels, fmt='', cmap='Blues')
+
+labels = ['True Neg','False Pos','False Neg','True Pos']
+labels = np.asarray(labels).reshape(2,2)
+sns.heatmap(RF_Matrix/np.sum(RF_Matrix), annot=labels, cmap='Blues')
+'''
+
+#Random Forest PROB CM
+
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+df_cm = pd.DataFrame(RF_Matrix.astype('int64'), columns=np.unique(species), index = np.unique(species))
+df_cm.index.name = 'Actual Slam Events'
+df_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(df_cm/np.sum(df_cm), cmap="Blues", annot=True,annot_kws={"size": 16}, fmt='.2g')# font size
+
+#NN Loss Function
+
+
+
+#test_acc = accuracy_score(X_test, prediction) * 100.
+loss_values = NN.loss_curve_
+
+
+import matplotlib.pyplot as plt
+#color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.plot(loss_values, color='blue')
+plt.title('Neural Network Loss Function')
+plt.ylabel('Loss Function')
+plt.xlabel('Number of Iterations')
+plt.ylim(0, 1)
+
+plt.show()
+
+
+#test_acc = accuracy_score(X_test, prediction) * 100.
+loss_values = NN.loss_curve_
+
+
+import matplotlib.pyplot as plt
+#color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.plot(loss_values, color='blue')
+plt.title('Neural Network Loss Function')
+plt.ylabel('Loss Function')
+plt.xlabel('Number of Iterations')
+#plt.ylim(0, 1)
+
+plt.show()
