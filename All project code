@@ -1793,3 +1793,1635 @@ plt.xlabel('Number of Iterations')
 #plt.ylim(0, 1)
 
 plt.show()
+
+
+import glob
+import pandas as pd
+import numpy as np
+import os
+from os import listdir
+import csv
+from collections import defaultdict
+import numpy as np
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+####NEW MODELS
+from sklearn import tree
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+from sklearn.neural_network import MLPClassifier
+
+import sklearn
+from sklearn.tree import DecisionTreeClassifier
+from sklearn import datasets
+from IPython.display import Image  
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix
+
+from sklearn.neural_network import MLPClassifier
+
+###AWS
+
+#Import training data
+
+import boto3
+import pandas as pd
+from sagemaker import get_execution_role
+
+role = get_execution_role()
+bucket='my-bucket'
+data_key = 'train.csv'
+output_data_location = 's3://felipe-research/Training_Data.csv'.format(bucket, data_key)
+
+training_data = pd.read_csv(output_data_location)
+
+
+print(training_data)
+
+
+#Import test data
+
+role = get_execution_role()
+bucket='my-bucket'
+data_key = 'train.csv'
+input_data_location = 's3://felipe-research/Test_Data.csv'.format(bucket, data_key)
+
+test_data = pd.read_csv(input_data_location)
+
+print(test_data)
+
+
+####PLOTTING SLAM DATA
+
+PLOTTING_SLAM_DATA = pd.concat([test_data, training_data], axis=0, ignore_index=True, keys=None,
+          levels=None, names=None, verify_integrity=False, copy=True)
+ 
+
+print(PLOTTING_SLAM_DATA[1:50])
+
+PLOTTING_SLAM_DATA = PLOTTING_SLAM_DATA['Slam Identification'][500000:]
+
+print(PLOTTING_SLAM_DATA)
+
+plt.plot(PLOTTING_SLAM_DATA)
+
+
+###APPLY DATA MANIPULATION TO TRAINING VALUES
+
+all_training = training_data[['FWD LVDT', 'Acoustic WP', 'Slam Identification']]
+
+#Slam Classification
+
+all_training['Classification Prediction'] = (all_training['Slam Identification'].iloc[::-1]
+        .rolling(100)
+        .sum()
+        .iloc[::-1])
+
+all_training.loc[all_training['Classification Prediction'] > 0,'Classification Prediction'] = 1
+
+all_training = all_training.dropna().reset_index(drop=True)
+
+all_training = all_training[['FWD LVDT', 'Acoustic WP', 'Classification Prediction']]
+
+print(all_training)
+
+
+###APPLY DATA MANIPULATION TO TEST VALUES
+
+all_test = test_data[['FWD LVDT', 'Acoustic WP', 'Slam Identification']]
+
+#Slam Classification
+
+all_test['Classification Prediction'] = (all_test['Slam Identification'].iloc[::-1]
+        .rolling(100)
+        .sum()
+        .iloc[::-1])
+
+all_test.loc[all_test['Classification Prediction'] > 0,'Classification Prediction'] = 1
+
+all_test = all_test.dropna().reset_index(drop=True)
+
+all_test = all_test[['FWD LVDT', 'Acoustic WP', 'Classification Prediction']]
+
+print(all_test)
+
+
+#COMBINE ALL DATA TOGETHER
+
+all_data = pd.concat([all_training, all_test], axis=0, ignore_index=True, keys=None,
+          levels=None, names=None, verify_integrity=False, copy=True)
+ 
+
+print(all_data)
+
+
+
+#Data Prep for 0.2s Rolling window of change difference, predicting whether slam in next 0.2s
+
+###Training Data
+
+#Make copy
+RW2_C_P2_Training = all_data.copy()
+
+#Rolling window
+
+RW2_C_P2_Training['Acoustic Wave Probe Rolling Window'] = RW2_C_P2_Training['Acoustic WP'].diff(periods=100)
+
+RW2_C_P2_Training['FWD LVDT Rolling Window'] = RW2_C_P2_Training['FWD LVDT'].diff(periods=100)
+
+#drop na values
+
+RW2_C_P2_Training = RW2_C_P2_Training.dropna().reset_index(drop=True)
+
+
+print(RW2_C_P2_Training)
+
+
+
+
+#Data Prep for 0.2s Rolling window of moving mean, predicting whether slam in next 0.2s
+
+
+#Make copy
+RW2_A_P2_Training = all_data.copy()
+
+#Rolling window
+
+RW2_A_P2_Training['Acoustic Wave Probe Rolling Window'] = RW2_A_P2_Training['Acoustic WP'].rolling(window=100).mean()
+
+RW2_A_P2_Training['FWD LVDT Rolling Window'] = RW2_A_P2_Training['FWD LVDT'].rolling(window=100).mean()
+
+#drop na values
+
+RW2_A_P2_Training = RW2_A_P2_Training.dropna().reset_index(drop=True)
+
+print(RW2_A_P2_Training)
+
+
+#Data Prep for 0.5s Rolling window of change difference, predicting whether slam in next 0.2s
+
+###Training Data
+
+#Make copy
+RW5_C_P2_Training = all_data.copy()
+
+#Rolling window
+
+RW5_C_P2_Training['Acoustic Wave Probe Rolling Window'] = RW5_C_P2_Training['Acoustic WP'].diff(periods=250)
+
+RW5_C_P2_Training['FWD LVDT Rolling Window'] = RW5_C_P2_Training['FWD LVDT'].diff(periods=250)
+
+#drop na values
+
+RW5_C_P2_Training = RW5_C_P2_Training.dropna().reset_index(drop=True)
+
+
+print(RW5_C_P2_Training)
+
+
+
+#Data Prep for 0.5s Rolling window of moving mean, predicting whether slam in next 0.2s
+
+
+#Make copy
+RW5_A_P2_Training = all_data.copy()
+
+#Rolling window
+
+RW5_A_P2_Training['Acoustic Wave Probe Rolling Window'] = RW5_A_P2_Training['Acoustic WP'].rolling(window=250).mean()
+
+RW5_A_P2_Training['FWD LVDT Rolling Window'] = RW5_A_P2_Training['FWD LVDT'].rolling(window=250).mean()
+
+#drop na values
+
+RW5_A_P2_Training = RW5_A_P2_Training.dropna().reset_index(drop=True)
+
+print(RW5_A_P2_Training)
+
+
+#Data Prep for 1s Rolling window of change difference, predicting whether slam in next 0.2s
+
+###Training Data
+
+#Make copy
+RW1_C_P2_Training = all_data.copy()
+
+#Rolling window
+
+RW1_C_P2_Training['Acoustic Wave Probe Rolling Window'] = RW1_C_P2_Training['Acoustic WP'].diff(periods=500)
+
+RW1_C_P2_Training['FWD LVDT Rolling Window'] = RW1_C_P2_Training['FWD LVDT'].diff(periods=500)
+
+#drop na values
+
+RW1_C_P2_Training = RW1_C_P2_Training.dropna().reset_index(drop=True)
+
+
+print(RW1_C_P2_Training)
+
+
+#Data Prep for 1s Rolling window of moving mean, predicting whether slam in next 0.2s
+
+
+#Make copy
+RW1_A_P2_Training = all_data.copy()
+
+#Rolling window
+
+RW1_A_P2_Training['Acoustic Wave Probe Rolling Window'] = RW1_A_P2_Training['Acoustic WP'].rolling(window=500).mean()
+
+RW1_A_P2_Training['FWD LVDT Rolling Window'] = RW1_A_P2_Training['FWD LVDT'].rolling(window=500).mean()
+
+#drop na values
+
+RW1_A_P2_Training = RW1_A_P2_Training.dropna().reset_index(drop=True)
+
+print(RW1_A_P2_Training)
+
+#Data Prep for 5s Rolling window of change difference, predicting whether slam in next 0.2s
+
+###Training Data
+
+#Make copy
+RW5s_C_P2_Training = all_data.copy()
+
+#Rolling window
+
+RW5s_C_P2_Training['Acoustic Wave Probe Rolling Window'] = RW5s_C_P2_Training['Acoustic WP'].diff(periods=2500)
+
+RW5s_C_P2_Training['FWD LVDT Rolling Window'] = RW5s_C_P2_Training['FWD LVDT'].diff(periods=2500)
+
+#drop na values
+
+RW5s_C_P2_Training = RW5s_C_P2_Training.dropna().reset_index(drop=True)
+
+
+print(RW5s_C_P2_Training)
+
+
+
+#Data Prep for 5s Rolling window of moving mean, predicting whether slam in next 0.2s
+
+
+#Make copy
+RW5s_A_P2_Training = all_data.copy()
+
+#Rolling window
+
+RW5s_A_P2_Training['Acoustic Wave Probe Rolling Window'] = RW5s_A_P2_Training['Acoustic WP'].rolling(window=2500).mean()
+
+RW5s_A_P2_Training['FWD LVDT Rolling Window'] = RW5s_A_P2_Training['FWD LVDT'].rolling(window=2500).mean()
+
+#drop na values
+
+RW5s_A_P2_Training = RW5s_A_P2_Training.dropna().reset_index(drop=True)
+
+print(RW5s_A_P2_Training)
+
+
+
+
+##Decision Tree Classifier using 0.2s of historic data
+
+print('Decision Tree Classifier using 0.2s of historic data:')
+
+#Model Using Differential as rolling window - RW2_C_P2_Training
+
+X1_train = RW2_C_P2_Training[:500000].drop('Classification Prediction', axis = 1)
+X1_test = RW2_C_P2_Training[500000:].drop('Classification Prediction', axis = 1)
+y1_train = RW2_C_P2_Training['Classification Prediction'][:500000]
+y1_test = RW2_C_P2_Training['Classification Prediction'][500000:]
+
+dt1 = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+dt1.fit(X1_train, y1_train)
+accu_train = np.sum(dt1.predict(X1_train) == y1_train) / float(y1_train.size)
+accu_test1 = np.sum(dt1.predict(X1_test) == y1_test) / float(y1_test.size)
+
+
+print('Accuracy of the Decidion Tree differential model is ' + str(accu_test1))
+
+
+#Model Using Moving Mean as rolling window - RW2_A_P2_Training
+
+
+X2_train = RW2_A_P2_Training[:500000].drop('Classification Prediction', axis = 1)
+X2_test = RW2_A_P2_Training[500000:].drop('Classification Prediction', axis = 1)
+y2_train = RW2_A_P2_Training['Classification Prediction'][:500000]
+y2_test = RW2_A_P2_Training['Classification Prediction'][500000:]
+
+dt2 = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+dt2.fit(X2_train, y2_train)
+accu_train = np.sum(dt2.predict(X2_train) == y2_train) / float(y2_train.size)
+accu_test2 = np.sum(dt2.predict(X2_test) == y2_test) / float(y2_test.size)
+
+
+print('Accuracy of the Decidion Tree moving mean model is ' + str(accu_test2))
+
+
+
+
+##Random Forest using 0.2s of historic data
+
+print('Random Forest Classifier using 0.2s of historic data:')
+
+#Model Using Differential as rolling window
+
+from sklearn import metrics 
+
+
+rf_model1 = RandomForestClassifier(n_estimators=100)
+rf_model1.fit(X1_train, y1_train)
+
+rf_test_predictions1 = rf_model1.predict(X1_test)
+
+species1 = np.array(y1_test)
+predictions1 = np.array(rf_test_predictions1)
+
+rf_acc1 = metrics.accuracy_score(species1, predictions1)
+
+
+print('Accuracy of the Random Forest differential model is ' + str(rf_acc1))
+
+
+
+#Model Using Moving Mean as rolling window
+
+
+rf_model2 = RandomForestClassifier(n_estimators=100)
+rf_model2.fit(X2_train, y2_train)
+
+rf_test_predictions2 = rf_model2.predict(X2_test)
+
+species2 = np.array(y2_test)
+predictions2 = np.array(rf_test_predictions2)
+
+rf_acc2 = metrics.accuracy_score(species2, predictions2)
+
+
+print('Accuracy of the Random Forest moving mean model is ' + str(rf_acc2))
+
+
+##Neural Network Classifier using 0.2s of historic data
+
+print('Neural Network Classifier using 0.2s of historic data')
+
+from sklearn.neural_network import MLPClassifier
+
+#Model Using Differential as rolling window
+
+NN1 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+
+NN1.fit(X1_train, y1_train)
+
+prediction1 = NN1.predict(X1_test)
+
+a1 = y1_test.values
+
+count1 = 0
+for i in range(len(prediction1)):
+    if prediction1[i] == a1[i]:
+        count1 = count1+1
+
+print('Accuracy of the Neural Network differential model is ' + str(count1/len(prediction1)))
+
+
+#Model Using Moving Mean as rolling window
+
+
+NN2 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+
+NN2.fit(X2_train, y2_train)
+
+prediction2 = NN2.predict(X2_test)
+
+a2 = y2_test.values
+
+count2 = 0
+for i in range(len(prediction2)):
+    if prediction2[i] == a2[i]:
+        count2 = count2+1
+
+print('Accuracy of the Neural Network moving mean model is ' + str(count2/len(prediction2)))
+
+
+'''
+##### Model for slam prediction in next 0.2s, using 0.5s of historic data #####
+'''
+
+##Decision Tree Classifier using 0.5s of historic data
+
+print('Decision Tree Classifier using 0.5s of historic data:')
+
+#Model Using Differential as rolling window - RW5_C_P2_Training
+
+X3_train = RW5_C_P2_Training[:500000].drop('Classification Prediction', axis = 1)
+X3_test = RW5_C_P2_Training[500000:].drop('Classification Prediction', axis = 1)
+y3_train = RW5_C_P2_Training['Classification Prediction'][:500000]
+y3_test = RW5_C_P2_Training['Classification Prediction'][500000:]
+
+dt3 = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+dt3.fit(X3_train, y3_train)
+accu_train = np.sum(dt3.predict(X3_train) == y3_train) / float(y3_train.size)
+accu_test3 = np.sum(dt3.predict(X3_test) == y3_test) / float(y3_test.size)
+
+
+print('Accuracy of the Decidion Tree differential model is ' + str(accu_test3))
+
+
+#Model Using Moving Mean as rolling window - RW5_A_P2_Training
+
+
+X4_train = RW5_A_P2_Training[:500000].drop('Classification Prediction', axis = 1)
+X4_test = RW5_A_P2_Training[500000:].drop('Classification Prediction', axis = 1)
+y4_train = RW5_A_P2_Training['Classification Prediction'][:500000]
+y4_test = RW5_A_P2_Training['Classification Prediction'][500000:]
+
+dt4 = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+dt4.fit(X4_train, y4_train)
+accu_train = np.sum(dt4.predict(X4_train) == y4_train) / float(y4_train.size)
+accu_test4 = np.sum(dt2.predict(X4_test) == y4_test) / float(y4_test.size)
+
+
+print('Accuracy of the Decidion Tree moving mean model is ' + str(accu_test4))
+
+
+##Random Forest Classifier using 0.5s of historic data
+
+print('Random Forest Classifier using 0.5s of historic data:')
+
+#Model Using Differential as rolling window
+
+
+rf_model3 = RandomForestClassifier(n_estimators=100)
+rf_model3.fit(X3_train, y3_train)
+
+rf_test_predictions3 = rf_model3.predict(X3_test)
+
+species3 = np.array(y3_test)
+predictions3 = np.array(rf_test_predictions3)
+
+rf_acc3 = metrics.accuracy_score(species3, predictions3)
+
+
+print('Accuracy of the Random Forest differential model is ' + str(rf_acc3))
+
+
+#Model Using Moving Mean as rolling window
+
+
+rf_model4 = RandomForestClassifier(n_estimators=100)
+rf_model4.fit(X4_train, y4_train)
+
+rf_test_predictions4 = rf_model4.predict(X4_test)
+
+species4 = np.array(y4_test)
+predictions4 = np.array(rf_test_predictions4)
+
+rf_acc4 = metrics.accuracy_score(species4, predictions4)
+
+
+print('Accuracy of the Random Forest moving mean model is ' + str(rf_acc4))
+
+
+##Neural Network Classifier using 0.5s of historic data
+
+print('Neural Network Classifier using 0.5s of historic data:')
+
+#Model Using Differential as rolling window
+
+NN3 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+NN3.fit(X3_train, y3_train)
+
+prediction3 = NN3.predict(X3_test)
+
+a3 = y3_test.values
+
+count3 = 0
+for i in range(len(prediction3)):
+    if prediction3[i] == a3[i]:
+        count3 = count3+1
+
+print('Accuracy of the Neural Network differential model is ' + str(count3/len(prediction3)))
+
+
+
+#Model Using Moving Mean as rolling window
+
+
+NN4 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+NN4.fit(X4_train, y4_train)
+
+prediction4 = NN2.predict(X4_test)
+
+a4 = y4_test.values
+
+count4 = 0
+for i in range(len(prediction4)):
+    if prediction4[i] == a4[i]:
+        count4 = count4+1
+
+print('Accuracy of the Neural Network moving mean model is ' + str(count4/len(prediction4)))
+
+'''
+##### Model for slam prediction in next 0.2s, using 1s of historic data #####
+'''
+
+
+##Decision Tree Classifier using 1s of historic data
+
+print('Decision Tree Classifier using 1s of historic data:')
+
+
+#Model Using Differential as rolling window - RW1_C_P2_Training
+
+X5_train = RW1_C_P2_Training[:500000].drop('Classification Prediction', axis = 1)
+X5_test = RW1_C_P2_Training[500000:].drop('Classification Prediction', axis = 1)
+y5_train = RW1_C_P2_Training['Classification Prediction'][:500000]
+y5_test = RW1_C_P2_Training['Classification Prediction'][500000:]
+
+dt5 = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+dt5.fit(X5_train, y5_train)
+accu_train = np.sum(dt5.predict(X5_train) == y5_train) / float(y5_train.size)
+accu_test5 = np.sum(dt5.predict(X5_test) == y5_test) / float(y5_test.size)
+
+
+print('Decision Tree Calssifier using 1s of historic data results:')
+print('Accuracy of the Decidion Tree differential model is ' + str(accu_test5))
+
+
+#Model Using Moving Mean as rolling window - RW1_A_P2_Training
+
+
+X6_train = RW1_A_P2_Training[:500000].drop('Classification Prediction', axis = 1)
+X6_test = RW1_A_P2_Training[500000:].drop('Classification Prediction', axis = 1)
+y6_train = RW1_A_P2_Training['Classification Prediction'][:500000]
+y6_test = RW1_A_P2_Training['Classification Prediction'][500000:]
+
+dt6 = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+dt6.fit(X6_train, y6_train)
+accu_train = np.sum(dt6.predict(X6_train) == y6_train) / float(y6_train.size)
+accu_test6 = np.sum(dt6.predict(X6_test) == y6_test) / float(y6_test.size)
+
+
+print('Accuracy of the Decidion Tree moving mean model is ' + str(accu_test6))
+
+
+
+##Random Forest Classifier using 1s of historic data
+
+print('Random Forest Classifier using 1s of historic data:')
+
+#Model Using Differential as rolling window
+
+
+rf_model5 = RandomForestClassifier(n_estimators=100)
+rf_model5.fit(X5_train, y5_train)
+
+rf_test_predictions5 = rf_model5.predict(X5_test)
+
+species5 = np.array(y5_test)
+predictions5 = np.array(rf_test_predictions5)
+
+rf_acc5 = metrics.accuracy_score(species5, predictions5)
+
+
+print('Accuracy of the Random Forest differential model is ' + str(rf_acc5))
+
+
+
+#Model Using Moving Mean as rolling window
+
+
+rf_model6 = RandomForestClassifier(n_estimators=100)
+rf_model6.fit(X6_train, y6_train)
+
+rf_test_predictions6 = rf_model6.predict(X6_test)
+
+species6 = np.array(y6_test)
+predictions6 = np.array(rf_test_predictions6)
+
+rf_acc6 = metrics.accuracy_score(species6, predictions6)
+
+
+print('Accuracy of the Random Forest moving mean model is ' + str(rf_acc6))
+
+
+
+##Neural Network Classifier using 1s of historic data
+
+print('Neural Network Classifier using 1s of historic data:')
+
+#Model Using Differential as rolling window
+
+NN5 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+NN5.fit(X5_train, y5_train)
+
+prediction5 = NN5.predict(X5_test)
+
+a5 = y5_test.values
+
+count5 = 0
+for i in range(len(prediction5)):
+    if prediction5[i] == a5[i]:
+        count5 = count5+1
+
+print('Accuracy of the Neural Network differential model is ' + str(count5/len(prediction5)))
+
+
+
+#Model Using Moving Mean as rolling window
+
+
+NN6 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+
+NN6.fit(X6_train, y6_train)
+
+prediction6 = NN6.predict(X6_test)
+
+a6 = y6_test.values
+
+count6 = 0
+for i in range(len(prediction6)):
+    if prediction6[i] == a6[i]:
+        count6 = count6+1
+
+print('Accuracy of the Neural Network moving mean model is ' + str(count6/len(prediction6)))
+
+
+'''
+##### Model for slam prediction in next 0.2s, using 5s of historic data #####
+'''
+
+
+##Decision Tree Classifier using 5s of historic data
+
+print('Decision Tree Classifier using 5s of historic data:')
+
+
+#Model Using Differential as rolling window - RW5s_C_P2_Training
+
+X7_train = RW5s_C_P2_Training[:500000].drop('Classification Prediction', axis = 1)
+X7_test = RW5s_C_P2_Training[500000:].drop('Classification Prediction', axis = 1)
+y7_train = RW5s_C_P2_Training['Classification Prediction'][:500000]
+y7_test = RW5s_C_P2_Training['Classification Prediction'][500000:]
+
+dt7 = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+dt7.fit(X7_train, y7_train)
+accu_train = np.sum(dt7.predict(X7_train) == y7_train) / float(y7_train.size)
+accu_test7 = np.sum(dt7.predict(X7_test) == y7_test) / float(y7_test.size)
+
+
+print('Accuracy of the Decidion Tree differential model is ' + str(accu_test7))
+
+
+#Model Using Moving Mean as rolling window - RW5s_A_P2_Training
+
+
+X8_train = RW5s_A_P2_Training[:500000].drop('Classification Prediction', axis = 1)
+X8_test = RW5s_A_P2_Training[500000:].drop('Classification Prediction', axis = 1)
+y8_train = RW5s_A_P2_Training['Classification Prediction'][:500000]
+y8_test = RW5s_A_P2_Training['Classification Prediction'][500000:]
+
+dt8 = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+dt8.fit(X8_train, y8_train)
+accu_train = np.sum(dt8.predict(X8_train) == y8_train) / float(y8_train.size)
+accu_test8 = np.sum(dt8.predict(X8_test) == y8_test) / float(y8_test.size)
+
+
+print('Accuracy of the Decidion Tree moving mean model is ' + str(accu_test8))
+
+
+
+##Random Forest Classifier using 5s of historic data
+
+print('Random Forest Classifier using 5s of historic data:')
+
+#Model Using Differential as rolling window
+
+
+rf_model7 = RandomForestClassifier(n_estimators=100)
+rf_model7.fit(X7_train, y7_train)
+
+rf_test_predictions7 = rf_model7.predict(X7_test)
+
+species7 = np.array(y7_test)
+predictions7 = np.array(rf_test_predictions7)
+
+rf_acc7 = metrics.accuracy_score(species7, predictions7)
+
+
+print('Accuracy of the Random Forest differential model is ' + str(rf_acc7))
+
+
+
+#Model Using Moving Mean as rolling window
+
+
+rf_model8 = RandomForestClassifier(n_estimators=100)
+rf_model8.fit(X8_train, y8_train)
+
+rf_test_predictions8 = rf_model8.predict(X8_test)
+
+species8 = np.array(y8_test)
+predictions8 = np.array(rf_test_predictions8)
+
+rf_acc8 = metrics.accuracy_score(species8, predictions8)
+
+
+print('Accuracy of the Random Forest moving mean model is ' + str(rf_acc8))
+
+
+
+##Neural Network Classifier using 5s of historic data
+
+print('Neural Network Classifier using 5s of historic data:')
+
+#Model Using Differential as rolling window
+
+NN7 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+NN7.fit(X7_train, y7_train)
+
+prediction7 = NN7.predict(X7_test)
+
+a7 = y7_test.values
+
+count7 = 0
+for i in range(len(prediction7)):
+    if prediction7[i] == a7[i]:
+        count7 = count7+1
+
+print('Accuracy of the Neural Network differential model is ' + str(count7/len(prediction7)))
+
+
+
+#Model Using Moving Mean as rolling window
+
+
+NN8 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+
+NN8.fit(X8_train, y8_train)
+
+prediction8 = NN8.predict(X8_test)
+
+a8 = y8_test.values
+
+count8 = 0
+for i in range(len(prediction8)):
+    if prediction8[i] == a8[i]:
+        count8 = count8+1
+
+print('Accuracy of the Neural Network moving mean model is ' + str(count8/len(prediction8)))
+
+
+species = np.array(y1_test)
+predictions = np.array(prediction1)
+
+
+
+confusion_matrix(species, predictions)
+
+NN_Matrix = confusion_matrix(species, predictions)
+
+print(NN_Matrix)
+
+print(np.array(NN_Matrix))
+
+
+
+
+
+#from sklearn.metrics import plot_confusion_matrix
+from sklearn.metrics import confusion_matrix
+import pandas as pd
+import seaborn as sn
+import matplotlib.pyplot as plt
+%matplotlib inline
+import numpy as np
+
+
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+NN_cm = pd.DataFrame(NN_Matrix.astype('int64'), columns=np.unique(species), index = np.unique(species))
+NN_cm.index.name = 'Actual Slam Events'
+NN_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(NN_cm, cmap="Greens", annot=True,annot_kws={"size": 16}, fmt='g')# font size
+
+#plot_confusion_matrix(cf_matrix_3x3, figsize=(8,6), cbar=False)
+#sns.heatmap(RF_Matrix, cmap='Blues')
+'''
+labels = ['True Neg','False Pos','False Neg','True Pos']
+categories = ['Zero', 'One']
+make_confusion_matrix(RF_Matrix, 
+                      group_names=labels,
+                      categories=categories, 
+                      cmap='Blues', 
+                      figsize=(8,6))
+'''
+
+#Random Forest PROB CM
+
+
+y_true = ["Slam", "No Slam", "Slam", "No Slam"]
+y_pred = ["Slam", "No Slam", "Slam", "No Slam"]
+df_cm = pd.DataFrame(NN_Matrix.astype('int64'), columns=np.unique(species), index = np.unique(species))
+df_cm.index.name = 'Actual Slam Events'
+df_cm.columns.name = 'Predicted Slam Events'
+plt.figure(figsize = (10,7))
+sn.set(font_scale=1.6)#for label size
+sn.heatmap(df_cm/np.sum(df_cm), cmap="Blues", annot=True,annot_kws={"size": 16}, fmt='.2g')# font size
+
+
+
+
+
+##Neural Network Classifier using 0.2s of historic data
+
+print('Neural Network Classifier using 0.2s of historic data')
+
+from sklearn.neural_network import MLPClassifier
+
+#Model Using Differential as rolling window
+
+NN1 = MLPClassifier(alpha=1e-4, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20), 
+                    random_state=0, max_iter=500, learning_rate='adaptive')
+
+NN1.fit(X1_train, y1_train)
+
+prediction1 = NN1.predict(X1_test)
+
+a1 = y1_test.values
+
+count1 = 0
+for i in range(len(prediction1)):
+    if prediction1[i] == a1[i]:
+        count1 = count1+1
+
+print('Accuracy of the Neural Network differential model is ' + str(count1/len(prediction1)))
+
+
+
+plt.figure(figsize=(15, 10))
+
+loss_values = NN1.loss_curve_
+#NN1.fit(X1_train, y1_train)
+
+#prediction1 = NN1.predict(X1_test)
+
+import matplotlib.pyplot as plt
+#color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.plot(loss_values, color='blue')
+plt.title('Neural Network Loss Function')
+plt.ylabel('Loss Function')
+plt.xlabel('Number of Iterations')
+plt.ylim(0, 1)
+
+plt.show()
+
+
+
+####GRAPHING RESULTS###
+
+
+###Acoustic MVP
+
+plt.figure(figsize=(15, 5))
+#plt.plot(X1_train['FWD LVDT'][:1000], prediction1[:1000], 'K', X1_train['FWD LVDT'][:1000], y1_train[:1000], 'bo')
+
+
+#plt.scatter(X1_test['FWD LVDT'][:1000], prediction1[:1000])
+
+plt.plot(X1_test['Acoustic WP'][::10], y1_test[::10], 'k.', markersize=5)
+
+#forward lvdt on x axis, prediction on y
+
+#MVP on x-axis, prediction on y
+
+
+#plt.plot(t1, f(t1), 'bo', t2, f(t2), 'k') #plot each with real prediction
+
+#plt.scatter(prediction1[1:1000])
+t
+plt.xlabel('Acoustic Wave Probe (mm)')
+plt.ylabel('Classification (1/0)')
+plt.title('Acoustic Wave Probe vs Classification')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+
+
+###FWD LVDT
+
+plt.figure(figsize=(15, 5))
+#plt.plot(X1_train['FWD LVDT'][:1000], prediction1[:1000], 'K', X1_train['FWD LVDT'][:1000], y1_train[:1000], 'bo')
+
+
+#plt.scatter(X1_test['FWD LVDT'][:1000], prediction1[:1000])
+
+plt.plot(X1_test['FWD LVDT'][::10], y1_test[::10], 'k.', markersize=5)
+
+#forward lvdt on x axis, prediction on y
+
+#MVP on x-axis, prediction on y
+
+
+#plt.plot(t1, f(t1), 'bo', t2, f(t2), 'k') #plot each with real prediction
+
+#plt.scatter(prediction1[1:1000])
+
+plt.xlabel('Forward LVDT (mm)')
+plt.ylabel('Classification (1/0)')
+plt.title('Forward LVDT vs Model Prediction')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+
+###Acoustic MVP Rolling Window
+
+plt.figure(figsize=(15, 5))
+#plt.plot(X1_train['FWD LVDT'][:1000], prediction1[:1000], 'K', X1_train['FWD LVDT'][:1000], y1_train[:1000], 'bo')
+
+
+#plt.scatter(X1_test['FWD LVDT'][:1000], prediction1[:1000])
+
+plt.plot(X1_test['Acoustic Wave Probe Rolling Window'][::10], y1_test[::10], 'k.', markersize=5)
+
+#forward lvdt on x axis, prediction on y
+
+#MVP on x-axis, prediction on y
+
+
+#plt.plot(t1, f(t1), 'bo', t2, f(t2), 'k') #plot each with real prediction
+
+#plt.scatter(prediction1[1:1000])
+
+plt.xlabel('Acoustic Wave Probe Rolling Window (mm)')
+plt.ylabel('Classification (1/0)')
+plt.title('Acoustic Wave Probe Rolling Window vs Model Prediction')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+
+
+###FWD LVDT Rolling Window
+
+plt.figure(figsize=(15, 5))
+#plt.plot(X1_train['FWD LVDT'][:1000], prediction1[:1000], 'K', X1_train['FWD LVDT'][:1000], y1_train[:1000], 'bo')
+
+
+#plt.scatter(X1_test['FWD LVDT'][:1000], prediction1[:1000])
+
+plt.plot(X1_test['FWD LVDT Rolling Window'][::10], y1_test[::10], 'k.', markersize=5)
+
+#forward lvdt on x axis, prediction on y
+
+#MVP on x-axis, prediction on y
+
+
+#plt.plot(t1, f(t1), 'bo', t2, f(t2), 'k') #plot each with real prediction
+
+#plt.scatter(prediction1[1:1000])
+
+plt.xlabel('FWD LVDT Rolling Window (mm)')
+plt.ylabel('Classification (1/0)')
+plt.title('FWD LVDT Rolling Window vs Classification')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+
+plt.figure(figsize=(15, 10))
+#plt.plot(X1_train['FWD LVDT'][:1000], prediction1[:1000], 'K', X1_train['FWD LVDT'][:1000], y1_train[:1000], 'bo')
+
+
+#plt.scatter(X1_test['FWD LVDT'][:1000], prediction1[:1000])
+
+plt.plot(y1_test[:100000], X1_test['FWD LVDT'][:100000], 'bo')
+
+#forward lvdt on x axis, prediction on y
+
+#MVP on x-axis, prediction on y
+
+
+#plt.plot(t1, f(t1), 'bo', t2, f(t2), 'k') #plot each with real prediction
+
+#plt.scatter(prediction1[1:1000])
+
+plt.xlabel('FWD LVDT')
+plt.ylabel('Classification')
+plt.title('FWD LVDT vs Classification')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+
+plt.figure(figsize=(15, 20))
+
+plt.subplot(211)
+plt.plot(X1_test['FWD LVDT'][::10], 'black')
+plt.xlabel('Samples (500Hz)')
+plt.ylabel('Forward LVDT (mm)')
+plt.title('Forward LVDT Test Data')
+#plt.axis([0, 250572, -75, 300])
+plt.ylim(-100, 350)
+
+plt.subplot(212)
+plt.plot(X1_test['Acoustic WP'][::10], 'g')
+plt.xlabel('Samples (500Hz)')
+plt.ylabel('Acoustic Moving Wave Probe (mm)')
+plt.title('Acoustic Moving Wave Probe Test Data')
+plt.ylim(-900, 200)
+
+plt.show()
+
+
+
+
+
+plt.figure(figsize=(15, 20))
+
+plt.subplot(211)
+plt.plot(X1_test['FWD LVDT Rolling Window'][::10])
+plt.xlabel('Samples (500Hz)')
+plt.ylabel('Forward LVDT Rolling Window (mm)')
+plt.title('Forward LVDT Rolling Window Test Data')
+
+
+plt.subplot(212)
+plt.plot(X1_test['Acoustic Wave Probe Rolling Window'][::10], 'r')
+plt.xlabel('Samples (500Hz)')
+plt.ylabel('Acoustic Wave Probe Rolling Window (mm)')
+plt.title('Acoustic Wave Probe Rolling Window Test Data')
+
+plt.show()
+
+
+###Slam Identification of Test Results
+
+plt.figure(figsize=(15, 5))
+
+plt.plot(PLOTTING_SLAM_DATA[::10000], 'k.', markersize=4)
+plt.xlabel('Samples (500Hz)')
+plt.ylabel('Slam/No Slam (1/0)')
+plt.title('Identified Slams in Test Data')
+#linewidth=1,
+
+#plt.imshow(PLOTTING_SLAM_DATA, extent=[0, 5, 0, 5], origin='lower',
+                  #cmap='RdGy')
+      
+       
+###Slam Classification of Test 
+
+plt.figure(figsize=(15, 5))
+
+plt.plot(y1_test[::300], 'k.', markersize=4)
+plt.xlabel('Samples (500Hz)')
+plt.ylabel('True Classification')
+plt.title('Test Classification')
+
+###Slam Prediction of Test Results
+
+plt.figure(figsize=(15, 5))
+
+plt.plot(prediction1[::300], 'k.', markersize=4)
+plt.xlabel('Samples (500Hz)')
+plt.ylabel('Slam Prediction')
+plt.title('Model Classification Results')
+
+
+#Predictions
+
+plt.figure(figsize=(15, 10))
+
+plt.plot(prediction1[::100], 'bo')
+
+
+plt.xlabel('FWD LVDT')
+plt.ylabel('Classification')
+plt.title('FWD LVDT vs Classification')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+#Real Values
+
+plt.figure(figsize=(15, 10))
+
+plt.plot(y1_test)
+
+
+plt.xlabel('FWD LVDT')
+plt.ylabel('Classification')
+plt.title('FWD LVDT vs Classification')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+#Real Values
+
+plt.figure(figsize=(15, 10))
+
+plt.plot(y1_test)
+
+
+plt.xlabel('FWD LVDT')
+plt.ylabel('Classification')
+plt.title('FWD LVDT vs Classification')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+
+#Real Values
+
+plt.figure(figsize=(15, 20))
+
+#plt.plot(test_data['Slam Identification'])
+#-150771:
+
+#plt.xlabel('FWD LVDT')
+#plt.ylabel('Classification')
+#plt.title('FWD LVDT vs Classification')
+#plt.text(60, .025, r'$\mu=100,\ \sigma=15$')
+#plt.axis([40, 160, 0, 0.03])
+plt.grid(True)
+
+
+plt.subplot(211)
+plt.plot(PLOTTING_SLAM_DATA[::100])
+
+
+plt.subplot(212)
+plt.plot(X1_test['Acoustic Wave Probe Rolling Window'], 'r')
+
+plt.show()
+
+
+print(len(X1_test['FWD LVDT']))
+
+print(len(test_data['Slam Identification']))
+
+
+import seaborn as sns
+
+#with sns.axes_style('white'):
+    #sns.jointplot("x", "y", PLOTTING_SLAM_DATA, kind='hex')
+    
+sns.kdeplot(PLOTTING_SLAM_DATA)
+
+
+import glob
+import pandas as pd
+import numpy as np
+import os
+from os import listdir
+import csv
+from collections import defaultdict
+import numpy as np
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+
+from sklearn import tree
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+from sklearn.neural_network import MLPClassifier
+
+
+import boto3
+import pandas as pd
+from sagemaker import get_execution_role
+
+role = get_execution_role()
+bucket='my-bucket'
+data_key = 'train.csv'
+output_data_location = 's3://felipe-research/Training_Data.csv'.format(bucket, data_key)
+
+training_data = pd.read_csv(output_data_location)
+
+
+print(training_data)
+
+
+role = get_execution_role()
+bucket='my-bucket'
+data_key = 'train.csv'
+input_data_location = 's3://felipe-research/Test_Data.csv'.format(bucket, data_key)
+
+test_data = pd.read_csv(input_data_location)
+
+print(test_data)
+
+pd.DataFrame(training_data['Classification Prediction'])
+
+training_data.drop('Classification Prediction', axis = 1)
+
+
+###DECISION TREE
+import sklearn
+from sklearn.tree import DecisionTreeClassifier
+from sklearn import datasets
+from IPython.display import Image  
+
+X_train = training_data.drop('Classification Prediction', axis = 1)
+X_test = test_data.drop('Classification Prediction', axis = 1)
+y_train = training_data['Classification Prediction']
+y_test = test_data['Classification Prediction']
+
+#c = tree.DecisionTreeRegressor(max_depth = 25, 
+                             #random_state = 1)
+c = tree.DecisionTreeClassifier(max_depth = 25, 
+                             random_state = 0)
+c.fit(X_train, y_train)
+accu_train = np.sum(c.predict(X_train) == y_train) / float(y_train.size)
+accu_test = np.sum(c.predict(X_test) == y_test) / float(y_test.size)
+
+print(accu_train)
+print(accu_test)
+
+dt_test_predictions = c.predict(X_test)
+
+species = np.array(y_test)
+predictions = np.array(dt_test_predictions)
+
+DT_Matrix = confusion_matrix(species, predictions)
+
+print(DT_Matrix)
+
+
+
+#Random Forest
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix
+
+rf_model = RandomForestClassifier()
+rf_model.fit(X_train, y_train)
+
+rf_test_predictions = rf_model.predict(X_test)
+
+species = np.array(y_test)
+predictions = np.array(rf_test_predictions)
+
+
+
+confusion_matrix(species, predictions)
+
+RF_Matrix = confusion_matrix(species, predictions)
+
+print(RF_Matrix)
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+#print(count, len(prediction))
+
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'relu', solver='sgd', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'identity', solver='sgd', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'tanh', solver='sgd', hidden_layer_sizes = (40, 40), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='lbfgs', hidden_layer_sizes = (40, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (40, 10, 40), random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (40, 40, 80, 40, 40), 
+                   random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (20, 20, 40, 20, 20, 10), 
+                   random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (50, 100, 50), random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-3, activation = 'tanh', solver='sgd', hidden_layer_sizes = (20, 80, 80), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-6, activation = 'logistic', solver='sgd', hidden_layer_sizes = (40, 80, 10), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-3, activation = 'tanh', solver='sgd', hidden_layer_sizes = (10, 40, 80, 40, 10), random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (2,2), random_state=1)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+
+##Neural Network Perceptron
+
+from sklearn.neural_network import MLPClassifier
+
+NN = MLPClassifier(alpha=1e-5, activation = 'logistic', solver='sgd', hidden_layer_sizes = (1,2,5,2,1), random_state=0)
+
+NN.fit(X_train, y_train)
+
+prediction = NN.predict(X_test)
+
+a = y_test.values
+a
+count = 0
+for i in range(len(prediction)):
+    if prediction[i] == a[i]:
+        count = count+1
+        
+print('Accuracy of model:')
+print(count/len(prediction))
+
+
+
+#test_acc = accuracy_score(X_test, prediction) * 100.
+loss_values = NN.loss_curve_
+
+
+import matplotlib.pyplot as plt
+#color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.plot(loss_values, color='blue')
+plt.title('Neural Network Loss Function')
+plt.ylabel('Loss Function')
+plt.xlabel('Number of Iterations')
+plt.ylim(0, 1)
+
+plt.show()
+
+
+
+
+
+#test_acc = accuracy_score(X_test, prediction) * 100.
+loss_values = NN.loss_curve_
+
+
+import matplotlib.pyplot as plt
+#color='blue', figsize=(20, 6), s=2).set_xlabel('Data')
+plt.plot(loss_values, color='blue')
+plt.title('Neural Network Loss Function')
+plt.ylabel('Loss Function')
+plt.xlabel('Number of Iterations')
+#plt.ylim(0, 1)
+
+plt.show()
